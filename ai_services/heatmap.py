@@ -1,107 +1,61 @@
-
-import pandas as pd
 import cv2
 import numpy as np
+import os
+import sys
 
-# =========================
-# LOAD CSV
-# =========================
+from db import get_connection
 
-df = pd.read_csv(
-    "backend/outputs/trajectories.csv"
+video_id = int(sys.argv[1])
+
+conn = get_connection()
+cur = conn.cursor()
+
+cur.execute(
+    """
+    SELECT x, y
+    FROM trajectories
+    WHERE video_id = %s
+    """,
+    (video_id,)
 )
+rows = cur.fetchall()
 
-# =========================
-# LOAD VIDEO FRAME
-# =========================
-
-cap = cv2.VideoCapture(
-    "backend/public/processed.mp4"
-)
-
+cap = cv2.VideoCapture("backend/public/processed.mp4")
 ret, frame = cap.read()
-
 cap.release()
 
 if not ret:
-
     print("Cannot read video")
-
-    exit()
+    cur.close()
+    conn.close()
+    sys.exit()
 
 height, width = frame.shape[:2]
 
-# =========================
-# CREATE HEATMAP
-# =========================
+heatmap = np.zeros((height, width), dtype=np.float32)
 
-heatmap = np.zeros(
-    (height, width),
-    dtype=np.float32
-)
+for row in rows:
+    x = int(row[0])
+    y = int(row[1])
 
-for _, row in df.iterrows():
-
-    x = int(row["x"])
-    y = int(row["y"])
-
-    if (
-        0 <= x < width
-        and 0 <= y < height
-    ):
-
+    if 0 <= x < width and 0 <= y < height:
         heatmap[y, x] += 1
 
-# =========================
-# SMOOTH
-# =========================
+heatmap = cv2.GaussianBlur(heatmap, (101, 101), 0)
 
-heatmap = cv2.GaussianBlur(
-    heatmap,
-    (101, 101),
-    0
-)
+max_value = np.max(heatmap)
+if max_value <= 0:
+    max_value = 1
 
-# =========================
-# NORMALIZE
-# =========================
+heatmap = np.uint8(255 * heatmap / max_value)
 
-heatmap = np.uint8(
+heatmap_color = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
 
-    255 *
-    heatmap /
-    np.max(heatmap)
+overlay = cv2.addWeighted(frame, 0.6, heatmap_color, 0.4, 0)
 
-)
+cv2.imwrite("backend/public/heatmap.png", overlay)
 
-# =========================
-# APPLY COLOR
-# =========================
-
-heatmap_color = cv2.applyColorMap(
-    heatmap,
-    cv2.COLORMAP_JET
-)
-
-# =========================
-# OVERLAY
-# =========================
-
-overlay = cv2.addWeighted(
-    frame,
-    0.6,
-    heatmap_color,
-    0.4,
-    0
-)
-
-# =========================
-# SAVE
-# =========================
-
-cv2.imwrite(
-    "backend/public/heatmap.png",
-    overlay
-)
+cur.close()
+conn.close()
 
 print("Heatmap generated")

@@ -34,6 +34,20 @@ async function createVideo(
     return result.rows[0];
 }
 
+async function getLatestVideo() {
+
+    const result = await pool.query(
+        `
+        SELECT id, filename, processed
+        FROM videos
+        ORDER BY id DESC
+        LIMIT 1
+        `
+    );
+
+    return result.rows[0] || null;
+}
+
 async function markProcessed(
     videoId
 ) {
@@ -55,6 +69,8 @@ async function markProcessed(
 module.exports = {
 
     createVideo,
+
+    getLatestVideo,
 
     markProcessed
 };

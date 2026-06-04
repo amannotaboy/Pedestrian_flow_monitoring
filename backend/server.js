@@ -1,45 +1,37 @@
-
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
 const multer = require("multer");
 const { exec } = require("child_process");
+const fs = require("fs");
 
-const analyticsRoutes =
-    require("./routes/analytics");
-
-const zonesRoutes =
-    require("./routes/zones");
+const analyticsRoutes = require("./routes/analytics");
+const zonesRoutes = require("./routes/zones");
+const {
+    createVideo,
+    getLatestVideo,
+    markProcessed
+} = require("./services/videoService");
+const {
+    setCurrentVideoId,
+    getCurrentVideoId
+} = require("./state/currentVideo");
 
 const app = express();
-
-const fs = require("fs");
 
 // =========================
 // RESET OLD FILES
 // =========================
 
 const filesToDelete = [
-
     "backend/public/processed.mp4",
-
-    "backend/public/heatmap.png",
-
-    "backend/outputs/trajectories.csv",
-
-    "backend/outputs/stats.json"
+    "backend/public/heatmap.png"
 ];
 
-
 filesToDelete.forEach((file) => {
-
     if (fs.existsSync(file)) {
-
         fs.unlinkSync(file);
-
-        console.log(
-            `Deleted: ${file}`
-        );
+        console.log(`Deleted: ${file}`);
     }
 });
 
@@ -48,17 +40,9 @@ filesToDelete.forEach((file) => {
 // =========================
 
 app.use(cors());
-
 app.use(express.json());
-
-app.use(
-    express.static(
-        path.join(__dirname, "public")
-    )
-);
-
+app.use(express.static(path.join(__dirname, "public")));
 app.use("/api", analyticsRoutes);
-
 app.use("/api", zonesRoutes);
 
 // =========================
@@ -66,31 +50,11 @@ app.use("/api", zonesRoutes);
 // =========================
 
 const storage = multer.diskStorage({
-
-    destination: function (
-        req,
-        file,
-        cb
-    ) {
-
-        cb(
-            null,
-            "backend/uploads/"
-        );
+    destination: function (req, file, cb) {
+        cb(null, "backend/uploads/");
     },
-
-    filename: function (
-        req,
-        file,
-        cb
-    ) {
-
-        cb(
-            null,
-            Date.now() +
-            "-" +
-            file.originalname
-        );
+    filename: function (req, file, cb) {
+        cb(null, Date.now() + "-" + file.originalname);
     }
 });
 
@@ -98,214 +62,127 @@ const upload = multer({
     storage: storage
 });
 
+function clearGeneratedMedia() {
+    const generatedFiles = [
+        "backend/public/processed.mp4",
+        "backend/public/heatmap.png"
+    ];
+
+    generatedFiles.forEach((filePath) => {
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+        }
+    });
+}
+
+function assertNonEmptyFile(filePath, label) {
+    if (!fs.existsSync(filePath)) {
+        throw new Error(`${label} was not generated`);
+    }
+
+    const stats = fs.statSync(filePath);
+    if (!stats.size || stats.size <= 0) {
+        throw new Error(`${label} is empty`);
+    }
+}
+
+function runPython(command) {
+    return new Promise((resolve, reject) => {
+        exec(command, (error, stdout, stderr) => {
+            if (error) {
+                reject(error);
+                return;
+            }
+
+            if (stderr) {
+                console.log(stderr);
+            }
+
+            resolve(stdout);
+        });
+    });
+}
+
 // =========================
 // UPLOAD ROUTE
 // =========================
 
-app.post(
-
-    "/upload",
-
-    upload.single("video"),
-
-    (req, res) => {
-
+app.post("/upload", upload.single("video"), async (req, res) => {
+    try {
         if (!req.file) {
-
             return res.status(400).json({
-
-                error:
-                    "No file uploaded"
+                error: "No file uploaded"
             });
         }
 
-        const videoPath =
-            `backend/uploads/${req.file.filename}`;
-        fs.writeFileSync(
-            "backend/outputs/current_video.txt",
-            videoPath
-        );
-        exec(
-            `python ai_services/extract_preview.py "${videoPath}"`,
-            (err, stdout, stderr) => {
+        const videoPath = `backend/uploads/${req.file.filename}`;
+        const videoRecord = await createVideo(req.file.filename);
+        setCurrentVideoId(videoRecord.id);
 
-                if (err) {
+        clearGeneratedMedia();
 
-                    console.error(err);
+        console.log("Processing video...");
 
-                } else {
+        await runPython(`python ai_services/extract_preview.py "${videoPath}"`);
+        await runPython(`python ai_services/tracking.py "${videoPath}" ${videoRecord.id}`);
+        assertNonEmptyFile("backend/public/processed.mp4", "Processed video");
+        await runPython(`python ai_services/analytics.py ${videoRecord.id}`);
+        await runPython(`python ai_services/heatmap.py ${videoRecord.id}`);
+        assertNonEmptyFile("backend/public/heatmap.png", "Heatmap image");
 
-                    console.log(stdout);
-                }
-            }
-        );
+        await markProcessed(videoRecord.id);
 
-        console.log(
-            "Processing video..."
-        );
-
-        // =========================
-        // TRACKING
-        // =========================
-
-        exec(
-
-            `python ai_services/tracking.py "${videoPath}"`,
-
-            (
-                error,
-                stdout,
-                stderr
-            ) => {
-
-                if (error) {
-
-                    console.error(error);
-
-                    return res.status(500).json({
-
-                        error:
-                            "Tracking failed"
-                    });
-                }
-
-                console.log(stdout);
-
-                // =========================
-                // ANALYTICS
-                // =========================
-
-                exec(
-
-                    `python ai_services/analytics.py`,
-
-                    (
-                        err2,
-                        stdout2,
-                        stderr2
-                    ) => {
-
-                        if (err2) {
-
-                            console.error(err2);
-
-                            return res.status(500).json({
-
-                                error:
-                                    "Analytics failed"
-                            });
-                        }
-
-                        console.log(stdout2);
-
-                        // =========================
-                        // HEATMAP
-                        // =========================
-
-                        exec(
-
-                            `python ai_services/heatmap.py`,
-
-                            (
-                                err3,
-                                stdout3,
-                                stderr3
-                            ) => {
-
-                                if (err3) {
-
-                                    console.error(err3);
-
-                                    return res.status(500).json({
-
-                                        error:
-                                            "Heatmap failed"
-                                    });
-                                }
-
-                                console.log(stdout3);
-
-                                // =========================
-                                // FINAL RESPONSE
-                                // =========================
-
-                                return res.json({
-
-                                    message:
-                                        "Processing completed"
-                                });
-                            }
-                        );
-                    }
-                );
-            }
-        );
+        return res.json({
+            message: "Processing completed"
+        });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({
+            error: "Processing failed"
+        });
     }
-);
-app.post(
-    "/api/reprocess",
-    (req, res) => {
+});
 
-        const videoPath =
-            fs.readFileSync(
-                "backend/outputs/current_video.txt",
-                "utf8"
-            ).trim();
+app.post("/api/reprocess", async (req, res) => {
+    try {
+        const activeVideoId = getCurrentVideoId() || (await getLatestVideo())?.id || null;
 
-        exec(
-            `python ai_services/tracking.py "${videoPath}"`,
-            (err) => {
+        if (!activeVideoId) {
+            return res.status(400).json({
+                error: "No active video"
+            });
+        }
 
-                if (err) {
+        const latestVideo = await getLatestVideo();
 
-                    return res
-                        .status(500)
-                        .json({
-                            error:
-                                "Tracking failed"
-                        });
-                }
+        if (!latestVideo) {
+            return res.status(400).json({
+                error: "No active video"
+            });
+        }
 
-                exec(
-                    `python ai_services/analytics.py`,
-                    (err2) => {
+        const videoPath = `backend/uploads/${latestVideo.filename}`;
 
-                        if (err2) {
+        clearGeneratedMedia();
 
-                            return res
-                                .status(500)
-                                .json({
-                                    error:
-                                        "Analytics failed"
-                                });
-                        }
+        await runPython(`python ai_services/tracking.py "${videoPath}" ${activeVideoId}`);
+        assertNonEmptyFile("backend/public/processed.mp4", "Processed video");
+        await runPython(`python ai_services/analytics.py ${activeVideoId}`);
+        await runPython(`python ai_services/heatmap.py ${activeVideoId}`);
+        assertNonEmptyFile("backend/public/heatmap.png", "Heatmap image");
+        await markProcessed(activeVideoId);
 
-                        exec(
-                            `python ai_services/heatmap.py`,
-                            (err3) => {
-
-                                if (err3) {
-
-                                    return res
-                                        .status(500)
-                                        .json({
-                                            error:
-                                                "Heatmap failed"
-                                        });
-                                }
-
-                                res.json({
-                                    message:
-                                        "Reprocessed"
-                                });
-                            }
-                        );
-                    }
-                );
-            }
-        );
+        return res.json({
+            message: "Reprocessed"
+        });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({
+            error: "Reprocess failed"
+        });
     }
-);
+});
+
 // =========================
 // SERVER
 // =========================
@@ -313,8 +190,5 @@ app.post(
 const PORT = 3000;
 
 app.listen(PORT, () => {
-
-    console.log(
-        `Server running on port ${PORT}`
-    );
+    console.log(`Server running on port ${PORT}`);
 });

@@ -1,185 +1,104 @@
-import pandas as pd
 import json
+import os
+import sys
 
-# =========================
-# LOAD CSV
-# =========================
+from db import get_connection
 
-df = pd.read_csv(
-    "backend/outputs/trajectories.csv"
+video_id = int(sys.argv[1])
+
+conn = get_connection()
+cur = conn.cursor()
+
+cur.execute(
+    """
+    SELECT person_id, zone, frame
+    FROM trajectories
+    WHERE video_id = %s
+    ORDER BY person_id, frame
+    """,
+    (video_id,)
 )
+rows = cur.fetchall()
 
-# =========================
-# TOTAL PEOPLE
-# =========================
-
-total_people = int(
-
-    df["person_id"].nunique()
-
-)
-
-# =========================
-# MOST CROWDED ZONE
-# =========================
-
-most_crowded_zone = (
-
-    df["zone"]
-    .value_counts()
-    .idxmax()
-
-)
-
-# =========================
-# PERSON PATHS
-# =========================
-
-person_paths = {}
-
-for person_id in df["person_id"].unique():
-
-    person_df = df[
-        df["person_id"] == person_id
-    ]
-
-    zone_sequence = (
-
-        person_df["zone"]
-        .tolist()
-
-    )
-
-    # REMOVE DUPLICATES
-    cleaned = []
-
-    for z in zone_sequence:
-
-        if (
-            len(cleaned) == 0
-            or
-            cleaned[-1] != z
-        ):
-
-            cleaned.append(z)
-
-    # SAVE PATH
-    if len(cleaned) >= 2:
-
-        path = (
-            cleaned[0]
-            + " → "
-            + cleaned[-1]
-        )
-
-        person_paths[path] = (
-
-            person_paths.get(path, 0)
-            + 1
-
-        )
-
-# =========================
-# POPULAR PATH
-# =========================
-
-if len(person_paths) > 0:
-
-    popular_path = max(
-
-        person_paths,
-
-        key=person_paths.get
-    )
-
+if len(rows) == 0:
+    stats = {
+        "total_people": 0,
+        "most_crowded_zone": "-",
+        "popular_path": "No movement",
+        "zone_counts": {},
+        "congestion_alert": "Normal"
+    }
 else:
+    person_ids = sorted({row[0] for row in rows})
+    total_people = len(person_ids)
 
-    popular_path = "No movement"
+    zone_frequency = {}
+    for _, zone, _ in rows:
+        zone_frequency[zone] = zone_frequency.get(zone, 0) + 1
 
-# =========================
-# ZONE COUNTS
-# =========================
+    most_crowded_zone = max(zone_frequency, key=zone_frequency.get)
 
-zone_counts = {}
+    person_paths = {}
+    for person_id in person_ids:
+        person_zones = [
+            zone
+            for row_person_id, zone, _ in rows
+            if row_person_id == person_id
+        ]
 
-for zone in df["zone"].unique():
+        cleaned = []
+        for z in person_zones:
+            if len(cleaned) == 0 or cleaned[-1] != z:
+                cleaned.append(z)
 
-    unique_people = (
+        if len(cleaned) >= 2:
+            path = cleaned[0] + " -> " + cleaned[-1]
+            person_paths[path] = person_paths.get(path, 0) + 1
 
-        df[
-            df["zone"] == zone
-        ]["person_id"]
+    if len(person_paths) > 0:
+        popular_path = max(person_paths, key=person_paths.get)
+    else:
+        popular_path = "No movement"
 
-        .nunique()
-    )
+    zone_counts = {}
+    for zone in zone_frequency.keys():
+        unique_people = len({
+            row_person_id
+            for row_person_id, row_zone, _ in rows
+            if row_zone == zone
+        })
+        zone_counts[zone] = int(unique_people)
 
-    zone_counts[zone] = int(
-        unique_people
-    )
+    congestion_alert = "Normal"
+    for zone, count in zone_counts.items():
+        if count > 15:
+            congestion_alert = f"High congestion in {zone}"
+            break
+        elif count > 10:
+            congestion_alert = f"Moderate traffic in {zone}"
 
-# =========================
-# CONGESTION ALERT
-# =========================
+    stats = {
+        "total_people": total_people,
+        "most_crowded_zone": most_crowded_zone,
+        "popular_path": popular_path,
+        "zone_counts": zone_counts,
+        "congestion_alert": congestion_alert
+    }
 
-congestion_alert = "Normal"
-
-for zone, count in zone_counts.items():
-
-    if count > 15:
-
-        congestion_alert = (
-            f"🔴 High congestion in {zone}"
-        )
-
-        break
-
-    elif count > 10:
-
-        congestion_alert = (
-            f"🟡 Moderate traffic in {zone}"
-        )
-
-# =========================
-# STATS JSON
-# =========================
-
-stats = {
-
-    "total_people":
-        total_people,
-
-    "most_crowded_zone":
-        most_crowded_zone,
-
-    "popular_path":
-        popular_path,
-
-    "zone_counts":
-        zone_counts,
-
-    "congestion_alert":
-        congestion_alert
-}
-
-# =========================
-# SAVE JSON
-# =========================
-
-with open(
-
-    "backend/outputs/stats.json",
-
-    "w"
-
-) as f:
-
-    json.dump(
-        stats,
-        f,
-        indent=4
-    )
-
-print(
-    "Analytics completed"
+cur.execute(
+    """
+    INSERT INTO analytics (video_id, data)
+    VALUES (%s, %s::jsonb)
+    ON CONFLICT (video_id)
+    DO UPDATE SET
+        data = EXCLUDED.data,
+        updated_at = NOW()
+    """,
+    (video_id, json.dumps(stats))
 )
 
+conn.commit()
+cur.close()
+conn.close()
+
+print("Analytics completed")

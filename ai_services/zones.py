@@ -1,98 +1,90 @@
-import json
-import os
+from db import get_connection
 
 ZONES = {}
 
 
-def load_zones(video_width, video_height):
+def load_zones(video_id, video_width, video_height):
 
     global ZONES
 
-    zones_file = (
-        r"D:\SE\backend\outputs\zones.json"
-    )
+    conn = get_connection()
 
-    if not os.path.exists(zones_file):
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT grid_size, zone_name, grid_position
+                FROM zones
+                WHERE video_id = %s
+                ORDER BY grid_position
+                """,
+                (video_id,)
+            )
+            rows = cur.fetchall()
 
-        print("zones.json not found")
+        if len(rows) == 0:
+            print("No zones found")
+            ZONES = {}
+            return {}
 
-        return {}
+        grid_size = rows[0][0]
+        saved_zones = [
+            {
+                "name": row[1],
+                "grid_position": row[2]
+            }
+            for row in rows
+        ]
 
-    with open(
-        zones_file,
-        "r",
-        encoding="utf-8"
-    ) as f:
+        cell_width = video_width // grid_size
+        cell_height = video_height // grid_size
 
-        data = json.load(f)
+        zones = {}
 
-    grid_size = data["grid_size"]
+        for zone in saved_zones:
+            index = zone["grid_position"]
+            row = index // grid_size
+            col = index % grid_size
 
-    saved_zones = data["zones"]
+            x1 = col * cell_width
+            y1 = row * cell_height
+            x2 = x1 + cell_width
+            y2 = y1 + cell_height
 
-    cell_width = (
-        video_width // grid_size
-    )
+            zones[zone["name"]] = (
+                x1,
+                y1,
+                x2,
+                y2
+            )
 
-    cell_height = (
-        video_height // grid_size
-    )
+        ZONES = zones
 
-    zones = {}
-
-    for zone in saved_zones:
-
-        index = zone["grid_position"]
-
-        row = index // grid_size
-
-        col = index % grid_size
-
-        x1 = col * cell_width
-        y1 = row * cell_height
-
-        x2 = x1 + cell_width
-        y2 = y1 + cell_height
-
-        zones[
-            zone["name"]
-        ] = (
-            x1,
-            y1,
-            x2,
-            y2
+        print(
+            "Loaded",
+            len(ZONES),
+            "zones"
         )
 
-    ZONES = zones
-
-    print(
-        "Loaded",
-        len(ZONES),
-        "zones"
-    )
-
-    return zones
+        return zones
+    finally:
+        conn.close()
 
 
 def get_zone(x, y):
 
     for zone_name, (
-
         x1,
         y1,
         x2,
         y2
-
     ) in ZONES.items():
 
         if (
-
             x1 <= x <= x2
             and
             y1 <= y <= y2
-
         ):
-
             return zone_name
 
     return "Unknown"

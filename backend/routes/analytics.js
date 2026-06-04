@@ -1,26 +1,43 @@
 const express = require("express");
-const fs = require("fs");
-const path = require("path");
+
+const {
+    getAnalytics,
+} = require("../services/analyticsService");
+const {
+    getCurrentVideoId
+} = require("../state/currentVideo");
+const {
+    getLatestVideo
+} = require("../services/videoService");
 
 const router = express.Router();
 
-router.get("/stats", (req, res) => {
+router.get("/stats", async (req, res) => {
 
-    const statsPath = path.join(
-        __dirname,
-        "../outputs/stats.json"
-    );
+    try {
 
-    fs.readFile(statsPath, "utf8", (err, data) => {
+        const latestVideo = await getLatestVideo();
+        const videoId = getCurrentVideoId() || latestVideo?.id || null;
 
-        if (err) {
-            return res.status(500).json({
-                error: "Cannot read stats"
-            });
+        if (videoId) {
+
+            const analytics = await getAnalytics(videoId);
+
+            if (analytics) {
+                return res.json(analytics);
+            }
         }
 
-        res.json(JSON.parse(data));
-    });
+        return res.status(404).json({
+            error: "No analytics available"
+        });
+
+    } catch (err) {
+
+        return res.status(500).json({
+            error: "Cannot load stats"
+        });
+    }
 });
 
 module.exports = router;

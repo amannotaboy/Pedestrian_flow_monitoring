@@ -1,35 +1,42 @@
 const express = require("express");
 
-const fs = require("fs");
+const {
+    saveZones,
+    getZones
+} = require("../services/zoneService");
+const {
+    getCurrentVideoId
+} = require("../state/currentVideo");
+const {
+    getLatestVideo
+} = require("../services/videoService");
 
 const router = express.Router();
 
-// =====================================
-// SAVE ZONES
-// =====================================
+async function getActiveVideoId() {
+    const latestVideo = await getLatestVideo();
+    return getCurrentVideoId() || latestVideo?.id || null;
+}
 
-router.post("/zones", (req, res) => {
+router.post("/zones", async (req, res) => {
 
     try {
 
-        const zones =
-            req.body;
+        const payload = req.body;
+        const zones = payload.zones || [];
+        const gridSize = Number(payload.grid_size) || 0;
+        const videoId = await getActiveVideoId();
 
-        fs.writeFileSync(
+        if (!videoId) {
+            return res.status(400).json({
+                error: "No active video"
+            });
+        }
 
-            "backend/outputs/zones.json",
-
-            JSON.stringify(
-                zones,
-                null,
-                4
-            )
-        );
+        await saveZones(videoId, gridSize, zones);
 
         return res.json({
-
-            message:
-                "Zones saved successfully"
+            message: "Zones saved successfully"
         });
 
     } catch (err) {
@@ -37,45 +44,47 @@ router.post("/zones", (req, res) => {
         console.error(err);
 
         return res.status(500).json({
-
-            error:
-                "Failed to save zones"
+            error: "Failed to save zones"
         });
     }
 });
 
-// =====================================
-// GET ZONES
-// =====================================
-
-router.get("/zones", (req, res) => {
+router.get("/zones", async (req, res) => {
 
     try {
 
-        const file =
-            "backend/outputs/zones.json";
+        const videoId = await getActiveVideoId();
 
-        if (!fs.existsSync(file)) {
-
-            return res.json([]);
+        if (!videoId) {
+            return res.json({
+                grid_size: 0,
+                zones: []
+            });
         }
 
-        const data =
-            JSON.parse(
+        const dbZones = await getZones(videoId);
 
-                fs.readFileSync(file)
-            );
+        if (dbZones && dbZones.length > 0) {
+            return res.json({
+                grid_size: dbZones[0].grid_size,
+                zones: dbZones.map((zone) => ({
+                    name: zone.zone_name,
+                    grid_position: zone.grid_position
+                }))
+            });
+        }
 
-        return res.json(data);
+        return res.json({
+            grid_size: 0,
+            zones: []
+        });
 
     } catch (err) {
 
         console.error(err);
 
         return res.status(500).json({
-
-            error:
-                "Failed to load zones"
+            error: "Failed to load zones"
         });
     }
 });

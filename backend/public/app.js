@@ -1,16 +1,59 @@
 let timelineChart = null;
 let zoneChart = null;
+const storedVideoId = Number(localStorage.getItem("currentVideoId"));
+let currentVideoId = Number.isInteger(storedVideoId) && storedVideoId > 0
+    ? storedVideoId
+    : null;
+let realtimeInterval = null;
+// =====================================
+// MEDIA REFRESH
+// =====================================
+
+function refreshMedia() {
+
+    const video = document.getElementById("processedVideo");
+    if (video) {
+        video.src = "/processed.mp4?t=" + Date.now();
+        video.load();
+    }
+
+    const heatmap = document.getElementById("heatmapImage");
+    if (heatmap) {
+        heatmap.src = "/heatmap.png?t=" + Date.now();
+    }
+}
 
 // =====================================
 // LOAD STATS
 // =====================================
 
+function startRealtime() {
+
+    if (realtimeInterval) {
+        clearInterval(realtimeInterval);
+    }
+
+    refreshMedia();
+    loadStats();
+
+    realtimeInterval = setInterval(() => {
+        loadStats();
+    }, 1000);
+}
+
 async function loadStats() {
 
     try {
+        if (!currentVideoId) return;
 
         const response =
-            await fetch("/api/stats");
+            await fetch(
+                `/api/stats?videoId=${currentVideoId}`
+            );
+
+        if (!response.ok) {
+            throw new Error("Failed to load stats");
+        }
 
         const data =
             await response.json();
@@ -94,34 +137,6 @@ async function loadStats() {
         );
 
         // =====================================
-        // UPDATE VIDEO
-        // =====================================
-
-        const video =
-            document.getElementById(
-                "processedVideo"
-            );
-
-        video.src =
-            "/processed.mp4?t=" +
-            new Date().getTime();
-
-        video.load();
-
-        // =====================================
-        // UPDATE HEATMAP
-        // =====================================
-
-        const heatmap =
-            document.getElementById(
-                "heatmapImage"
-            );
-
-        heatmap.src =
-            "/heatmap.png?t=" +
-            new Date().getTime();
-
-        // =====================================
         // ZONE CHART
         // =====================================
 
@@ -158,75 +173,44 @@ async function loadStats() {
 // =====================================
 
 function renderZoneChart(data) {
-
-    const zoneCounts =
-        data.zone_counts || {};
-
-    const labels =
-        Object.keys(zoneCounts);
-
-    const values =
-        Object.values(zoneCounts);
-
-    const ctx =
-        document.getElementById(
-            "zoneChart"
-        );
+    const zoneCounts = data.zone_counts || {};
+    const labels = Object.keys(zoneCounts);
+    const values = Object.values(zoneCounts);
+    const ctx = document.getElementById("zoneChart");
 
     if (!ctx) return;
 
     if (zoneChart) {
-
         zoneChart.destroy();
     }
 
     zoneChart = new Chart(ctx, {
-
         type: "bar",
-
         data: {
-
             labels: labels,
-
             datasets: [{
-
                 label: "People Count",
-
                 data: values,
-
                 borderRadius: 10
             }]
         },
-
         options: {
-
             responsive: true,
-
             plugins: {
-
                 legend: {
-
                     labels: {
-
                         color: "#686b82"
                     }
                 }
             },
-
             scales: {
-
                 x: {
-
                     ticks: {
-
                         color: "#686b82"
                     }
                 },
-
                 y: {
-
                     ticks: {
-
                         color: "#686b82"
                     }
                 }
@@ -385,11 +369,14 @@ async function uploadVideo() {
 
         console.log(data);
 
+        if (data.videoId) {
+            currentVideoId = Number(data.videoId);
+            localStorage.setItem("currentVideoId", String(currentVideoId));
+        }
+        startRealtime();
         addFeed(
             "AI tracking started"
         );
-
-        await loadStats();
 
         addFeed(
             "Heatmap generated"
@@ -615,7 +602,9 @@ window.onload = () => {
 
     if (video) {
 
-        video.src = "";
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
     }
 
     // CLEAR HEATMAP
@@ -627,7 +616,7 @@ window.onload = () => {
 
     if (heatmap) {
 
-        heatmap.src = "";
+        heatmap.removeAttribute("src");
     }
 
     // INITIAL FEED
@@ -643,6 +632,11 @@ window.onload = () => {
     addFeed(
         "Monitoring ready"
     );
+
+    if (currentVideoId) {
+
+        startRealtime();
+    }
 }
 // =====================================
 // ZONE SYSTEM
@@ -805,10 +799,6 @@ function renderZoneList() {
 // SAVE ZONES
 // =====================================
 
-// =====================================
-// SAVE ZONES
-// =====================================
-
 async function saveZones() {
 
     const saveButton =
@@ -885,6 +875,8 @@ async function saveZones() {
                 "Reprocess failed"
             );
         }
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        startRealtime();
 
         addFeed(
             "Tracking completed"
@@ -893,8 +885,6 @@ async function saveZones() {
         // =========================
         // RELOAD DASHBOARD
         // =========================
-
-        await loadStats();
 
         addFeed(
             "Dashboard updated"

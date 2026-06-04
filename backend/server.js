@@ -7,18 +7,24 @@ const fs = require("fs");
 
 const analyticsRoutes = require("./routes/analytics");
 const zonesRoutes = require("./routes/zones");
+const { getRealtimeStats } = require("./services/realtimeService");
+const {
+    setCurrentVideoId, 
+    getCurrentVideoId 
+} = require("./state/currentVideo");
 const {
     createVideo,
     getLatestVideo,
     markProcessed
 } = require("./services/videoService");
-const {
-    setCurrentVideoId,
-    getCurrentVideoId
-} = require("./state/currentVideo");
 
 const app = express();
+// =========================
+// TEMP: TEST STATS ROUTE/
+// =========================
+const statsRoutes = require("./routes/stats");
 
+app.use("/api", statsRoutes);
 // =========================
 // RESET OLD FILES
 // =========================
@@ -88,18 +94,23 @@ function assertNonEmptyFile(filePath, label) {
 
 function runPython(command) {
     return new Promise((resolve, reject) => {
+
         exec(command, (error, stdout, stderr) => {
+
+            console.log("==========");
+            console.log(command);
+            console.log(stdout);
+            console.log(stderr);
+
             if (error) {
+                console.error(error);
                 reject(error);
                 return;
             }
 
-            if (stderr) {
-                console.log(stderr);
-            }
-
             resolve(stdout);
         });
+
     });
 }
 
@@ -133,7 +144,8 @@ app.post("/upload", upload.single("video"), async (req, res) => {
         await markProcessed(videoRecord.id);
 
         return res.json({
-            message: "Processing completed"
+            message: "Processing completed",
+            videoId: videoRecord.id
         });
     } catch (error) {
         console.error(error);
@@ -173,13 +185,42 @@ app.post("/api/reprocess", async (req, res) => {
         await markProcessed(activeVideoId);
 
         return res.json({
-            message: "Reprocessed"
+            message: "Reprocessed",
+            videoId: activeVideoId
         });
     } catch (error) {
         console.error(error);
         return res.status(500).json({
             error: "Reprocess failed"
         });
+    }
+});
+
+// =========================
+// ANALYTICS ROUTE(realtime stats)
+// =========================
+
+app.get("/api/stats", async (req, res) => {
+    try {
+        const videoId = getCurrentVideoId();
+
+        if (!videoId) {
+            return res.json({
+                total_people: 0,
+                most_crowded_zone: "-",
+                popular_path: "-",
+                zone_counts: {},
+                congestion_alert: "Normal"
+            });
+        }
+
+        const stats = await getRealtimeStats(videoId);
+
+        return res.json(stats);
+
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: "stats failed" });
     }
 });
 

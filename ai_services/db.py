@@ -8,6 +8,6 @@ def get_connection():
         host=os.getenv("PGHOST", "localhost"),
         port=os.getenv("PGPORT", "5432"),
         user=os.getenv("PGUSER", "postgres"),
-        password=os.getenv("PGPASSWORD", "."),
+        password=os.getenv("PGPASSWORD", "postgres"),
         dbname=os.getenv("PGDATABASE", "flowai")
     )

@@ -115,6 +115,8 @@ out = cv2.VideoWriter(
 
     (width, height)
 )
+print("VideoWriter opened =", out.isOpened())
+print("Output path =", output_video)
 
 if not out.isOpened():
 
@@ -497,3 +499,4 @@ if os.path.exists(output_video):
 
 print("Tracking completed")
 print("Processed video saved")
+print("Processed frames =", frame_id)

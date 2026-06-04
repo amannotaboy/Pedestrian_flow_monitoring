@@ -18,12 +18,143 @@
 </head>
 
 <body>
+    <!-- ===================================== -->
+    <!-- AUTH LAYOUT -->
+    <!-- ===================================== -->
+
+    <div
+        id="authLayout"
+        class="auth-layout"
+    >
+
+        <div class="auth-card">
+
+            <div class="auth-brand">
+
+                <h1>
+                    FlowAI
+                </h1>
+
+                <p>
+                    Sign in to access monitoring dashboard
+                </p>
+
+            </div>
+
+            <div class="auth-tabs">
+
+                <button
+                    id="loginTabButton"
+                    class="auth-tab active"
+                    onclick="switchAuthMode('login')"
+                >
+                    Login
+                </button>
+
+                <button
+                    id="registerTabButton"
+                    class="auth-tab"
+                    onclick="switchAuthMode('register')"
+                >
+                    Register
+                </button>
+
+            </div>
+
+            <div class="auth-form">
+
+                <label>
+                    Username
+                </label>
+
+                <input
+                    id="authUsername"
+                    type="text"
+                    autocomplete="username"
+                    placeholder="Enter username"
+                >
+
+                <label>
+                    Password
+                </label>
+
+                <input
+                    id="authPassword"
+                    type="password"
+                    autocomplete="current-password"
+                    placeholder="Enter password"
+                >
+
+                <div
+                    id="roleField"
+                    class="auth-role-field"
+                >
+
+                    <label>
+                        Role
+                    </label>
+
+                    <select
+                        id="authRole"
+                        onchange="toggleAdminPasswordField()"
+                    >
+
+                        <option value="user">
+                            User
+                        </option>
+
+                        <option value="admin">
+                            Admin
+                        </option>
+
+                    </select>
+
+                </div>
+
+                <div
+                    id="adminPasswordField"
+                    class="auth-role-field"
+                >
+
+                    <label>
+                        Admin Password
+                    </label>
+
+                    <input
+                        id="adminPassword"
+                        type="password"
+                        autocomplete="off"
+                        placeholder="Required for admin role"
+                    >
+
+                </div>
+
+                <button
+                    id="authSubmitButton"
+                    onclick="submitAuth()"
+                >
+                    Login
+                </button>
+
+                <p
+                    id="authMessage"
+                    class="auth-message"
+                ></p>
+
+            </div>
+
+        </div>
+
+    </div>
 
     <!-- ===================================== -->
     <!-- MAIN LAYOUT -->
     <!-- ===================================== -->
 
-    <div class="main-layout">
+    <div
+        id="mainLayout"
+        class="main-layout app-hidden"
+    >
 
         <!-- ===================================== -->
         <!-- SIDEBAR -->
@@ -87,6 +218,7 @@
 
                 <button
                     class="menu-item"
+                    id="systemMenuItem"
                     onclick="switchTab('systemTab', this)"
                 >
                     <span>⚙</span>
@@ -153,13 +285,29 @@
 
                 <div class="upload-container">
 
+                    <div class="user-chip">
+                        <span id="currentUserLabel">
+                            Guest
+                        </span>
+
+                        <button
+                            class="logout-button"
+                            onclick="logout()"
+                        >
+                            Logout
+                        </button>
+                    </div>
+
                     <input
                         type="file"
                         id="videoInput"
                         accept="video/*"
                     >
 
-                    <button onclick="uploadVideo()">
+                    <button
+                        id="uploadButton"
+                        onclick="uploadVideo()"
+                    >
                         Upload Video
                     </button>
 

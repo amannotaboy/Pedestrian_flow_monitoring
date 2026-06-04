@@ -10,6 +10,53 @@ const {
 const {
     getCurrentVideoId
 } = require("../state/currentVideo");
+const { authenticate } = require("../middleware/auth");
+
+router.use(authenticate);
+
+function getPopularPath(rows) {
+    const pathsByPerson = new Map();
+
+    rows.forEach((row) => {
+        if (!row.zone || row.zone === "Unknown") {
+            return;
+        }
+
+        if (!pathsByPerson.has(row.person_id)) {
+            pathsByPerson.set(row.person_id, []);
+        }
+
+        const path = pathsByPerson.get(row.person_id);
+        const lastZone = path[path.length - 1];
+
+        if (lastZone !== row.zone) {
+            path.push(row.zone);
+        }
+    });
+
+    const pathCounts = {};
+
+    pathsByPerson.forEach((path) => {
+        if (path.length < 2) {
+            return;
+        }
+
+        const pathLabel = `${path[0]} -> ${path[path.length - 1]}`;
+        pathCounts[pathLabel] = (pathCounts[pathLabel] || 0) + 1;
+    });
+
+    const labels = Object.keys(pathCounts);
+
+    if (labels.length === 0) {
+        return "-";
+    }
+
+    return labels.reduce((a, b) =>
+        pathCounts[a] > pathCounts[b]
+            ? a
+            : b
+    );
+}
 
 router.get("/stats/:videoId", async (req, res) => {
     try {
@@ -50,8 +97,12 @@ router.get("/stats", async (req, res) => {
             await require("../services/videoService")
                 .getLatestVideo();
 
+        const requestedVideoId =
+            Number(req.query.videoId || 0);
+
         const videoId =
-            getCurrentVideoId()
+            requestedVideoId
+            || getCurrentVideoId()
             || latestVideo?.id
             || null;
 
@@ -92,6 +143,23 @@ router.get("/stats", async (req, res) => {
 
         const rows =
             result.rows;
+
+        const pathResult =
+            await pool.query(
+                `
+                SELECT
+                    person_id,
+                    zone
+                FROM trajectories
+                WHERE video_id = $1
+                AND frame <= $2
+                ORDER BY person_id, frame
+                `,
+                [
+                    videoId,
+                    currentFrame
+                ]
+            );
 
         const uniquePeople =
             new Set(
@@ -156,7 +224,7 @@ router.get("/stats", async (req, res) => {
                 mostCrowdedZone,
 
             popular_path:
-                "Realtime",
+                getPopularPath(pathResult.rows),
 
             zone_counts:
                 zoneCounts,

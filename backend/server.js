@@ -7,6 +7,11 @@ const fs = require("fs");
 
 const analyticsRoutes = require("./routes/analytics");
 const zonesRoutes = require("./routes/zones");
+const authRoutes = require("./routes/auth");
+const {
+    authenticate,
+    requireAdmin
+} = require("./middleware/auth");
 const { getRealtimeStats } = require("./services/realtimeService");
 const {
     setCurrentVideoId, 
@@ -23,8 +28,6 @@ const app = express();
 // TEMP: TEST STATS ROUTE/
 // =========================
 const statsRoutes = require("./routes/stats");
-
-app.use("/api", statsRoutes);
 // =========================
 // RESET OLD FILES
 // =========================
@@ -48,6 +51,8 @@ filesToDelete.forEach((file) => {
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
+app.use("/api", authRoutes);
+app.use("/api", statsRoutes);
 app.use("/api", analyticsRoutes);
 app.use("/api", zonesRoutes);
 
@@ -118,7 +123,7 @@ function runPython(command) {
 // UPLOAD ROUTE
 // =========================
 
-app.post("/upload", upload.single("video"), async (req, res) => {
+app.post("/upload", authenticate, upload.single("video"), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({
@@ -155,7 +160,7 @@ app.post("/upload", upload.single("video"), async (req, res) => {
     }
 });
 
-app.post("/api/reprocess", async (req, res) => {
+app.post("/api/reprocess", authenticate, requireAdmin, async (req, res) => {
     try {
         const activeVideoId = getCurrentVideoId() || (await getLatestVideo())?.id || null;
 

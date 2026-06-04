@@ -57,6 +57,172 @@ body {
     overflow-x: hidden;
 }
 
+.app-hidden {
+
+    display: none !important;
+}
+
+/* ===================================== */
+/* AUTH */
+/* ===================================== */
+
+.auth-layout {
+
+    min-height: 100vh;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    padding: 24px;
+}
+
+.auth-card {
+
+    width: min(460px, 100%);
+
+    background: var(--surface);
+
+    border: 1px solid var(--border);
+
+    border-radius: 24px;
+
+    padding: 28px;
+
+    box-shadow: var(--shadow);
+}
+
+.auth-brand h1 {
+
+    font-size: 42px;
+
+    color: var(--purple);
+
+    font-weight: 700;
+}
+
+.auth-brand p {
+
+    margin-top: 8px;
+
+    color: var(--text-secondary);
+
+    font-size: 15px;
+}
+
+.auth-tabs {
+
+    display: grid;
+
+    grid-template-columns: 1fr 1fr;
+
+    gap: 10px;
+
+    margin: 26px 0;
+}
+
+.auth-tab {
+
+    background: #f3f4f9;
+
+    color: #4c5163;
+
+    border-radius: 12px;
+
+    padding: 13px;
+}
+
+.auth-tab.active {
+
+    background: var(--purple);
+
+    color: white;
+}
+
+.auth-form {
+
+    display: flex;
+
+    flex-direction: column;
+
+    gap: 12px;
+}
+
+.auth-form label {
+
+    font-size: 14px;
+
+    font-weight: 700;
+
+    color: var(--text-secondary);
+}
+
+.auth-form input,
+.auth-form select {
+
+    width: 100%;
+
+    border: 1px solid var(--border);
+
+    border-radius: 12px;
+
+    padding: 14px;
+
+    font-size: 15px;
+
+    background: white;
+}
+
+.auth-message {
+
+    min-height: 20px;
+
+    color: #ef4444;
+
+    font-size: 14px;
+}
+
+.user-chip {
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 10px;
+
+    background: #f8f9fc;
+
+    border: 1px solid var(--border);
+
+    border-radius: 14px;
+
+    padding: 8px;
+}
+
+#currentUserLabel {
+
+    color: var(--text-secondary);
+
+    font-size: 14px;
+
+    font-weight: 700;
+
+    padding-left: 6px;
+}
+
+.logout-button {
+
+    padding: 10px 12px;
+
+    border-radius: 10px;
+
+    background: #ece8ff;
+
+    color: var(--purple);
+}
+
 /* ===================================== */
 /* MAIN LAYOUT */
 /* ===================================== */

@@ -20,6 +20,15 @@ const pool = new Pool({
             )
         `);
         await pool.query(`
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL CHECK (role IN ('admin', 'user')),
+                created_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        `);
+        await pool.query(`
             CREATE TABLE IF NOT EXISTS trajectories (
                 id SERIAL PRIMARY KEY,
                 video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,

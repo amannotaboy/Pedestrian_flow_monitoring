@@ -5,6 +5,170 @@ let currentVideoId = Number.isInteger(storedVideoId) && storedVideoId > 0
     ? storedVideoId
     : null;
 let realtimeInterval = null;
+let authMode = "login";
+let authToken = localStorage.getItem("authToken") || "";
+let currentUser = JSON.parse(localStorage.getItem("currentUser") || "null");
+
+function apiFetch(url, options = {}) {
+    const headers = {
+        ...(options.headers || {})
+    };
+
+    if (authToken) {
+        headers.Authorization = `Bearer ${authToken}`;
+    }
+
+    return fetch(url, {
+        ...options,
+        headers
+    });
+}
+
+function switchAuthMode(mode) {
+    authMode = mode;
+
+    document
+        .getElementById("loginTabButton")
+        .classList.toggle("active", mode === "login");
+
+    document
+        .getElementById("registerTabButton")
+        .classList.toggle("active", mode === "register");
+
+    document
+        .getElementById("roleField")
+        .style.display = mode === "register" ? "block" : "none";
+
+    document
+        .getElementById("authSubmitButton")
+        .innerText = mode === "register" ? "Register" : "Login";
+
+    document
+        .getElementById("authMessage")
+        .innerText = "";
+
+    toggleAdminPasswordField();
+}
+
+function toggleAdminPasswordField() {
+    const adminPasswordField =
+        document.getElementById("adminPasswordField");
+    const role = document.getElementById("authRole").value;
+
+    adminPasswordField.style.display =
+        authMode === "register" && role === "admin"
+            ? "block"
+            : "none";
+}
+
+async function submitAuth() {
+    const username = document.getElementById("authUsername").value.trim();
+    const password = document.getElementById("authPassword").value;
+    const role = document.getElementById("authRole").value;
+    const adminPassword = document.getElementById("adminPassword").value;
+    const message = document.getElementById("authMessage");
+    const button = document.getElementById("authSubmitButton");
+
+    message.innerText = "";
+    button.disabled = true;
+
+    try {
+        const response = await fetch(`/api/${authMode}`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                username,
+                password,
+                role,
+                adminPassword
+            })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Authentication failed");
+        }
+
+        authToken = data.token;
+        currentUser = data.user;
+
+        localStorage.setItem("authToken", authToken);
+        localStorage.setItem("currentUser", JSON.stringify(currentUser));
+
+        renderAuthState();
+        addFeed(`Logged in as ${currentUser.role}`);
+    } catch (err) {
+        message.innerText = err.message;
+    } finally {
+        button.disabled = false;
+    }
+}
+
+function logout() {
+    authToken = "";
+    currentUser = null;
+    currentVideoId = null;
+
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("currentUser");
+    localStorage.removeItem("currentVideoId");
+
+    if (realtimeInterval) {
+        clearInterval(realtimeInterval);
+        realtimeInterval = null;
+    }
+
+    renderAuthState();
+}
+
+function renderAuthState() {
+    const isLoggedIn = Boolean(authToken && currentUser);
+    const isAdmin = currentUser && currentUser.role === "admin";
+
+    document
+        .getElementById("authLayout")
+        .classList.toggle("app-hidden", isLoggedIn);
+
+    document
+        .getElementById("mainLayout")
+        .classList.toggle("app-hidden", !isLoggedIn);
+
+    const systemMenuItem = document.getElementById("systemMenuItem");
+
+    if (systemMenuItem) {
+        systemMenuItem.style.display = isAdmin ? "block" : "none";
+    }
+
+    const userLabel = document.getElementById("currentUserLabel");
+
+    if (userLabel && currentUser) {
+        userLabel.innerText = `${currentUser.username} (${currentUser.role})`;
+    }
+
+    if (!isAdmin) {
+        const activeSystemTab =
+            document
+                .getElementById("systemTab")
+                .classList
+                .contains("active-page");
+
+        if (activeSystemTab) {
+            const dashboardButton =
+                document.querySelector(
+                    ".menu-item[onclick*='dashboardTab']"
+                );
+
+            switchTab("dashboardTab", dashboardButton);
+        }
+    }
+
+    if (isLoggedIn && currentVideoId) {
+        startRealtime();
+    }
+}
 // =====================================
 // MEDIA REFRESH
 // =====================================
@@ -46,9 +210,12 @@ async function loadStats() {
     try {
         if (!currentVideoId) return;
 
+        const video = document.getElementById("processedVideo");
+        const currentTime = video ? video.currentTime || 0 : 0;
+
         const response =
-            await fetch(
-                `/api/stats?videoId=${currentVideoId}`
+            await apiFetch(
+                `/api/stats?videoId=${currentVideoId}&time=${currentTime}`
             );
 
         if (!response.ok) {
@@ -333,8 +500,8 @@ async function uploadVideo() {
     }
 
     const uploadButton =
-        document.querySelector(
-            ".upload-container button"
+        document.getElementById(
+            "uploadButton"
         );
 
     uploadButton.innerText =
@@ -357,7 +524,7 @@ async function uploadVideo() {
     try {
 
         const response =
-            await fetch("/upload", {
+            await apiFetch("/upload", {
 
                 method: "POST",
 
@@ -477,6 +644,13 @@ setInterval(() => {
 // =====================================
 
 function switchTab(tabId, button) {
+    if (
+        tabId === "systemTab"
+        && (!currentUser || currentUser.role !== "admin")
+    ) {
+        alert("Only admin can access system settings");
+        return;
+    }
 
     const pages =
         document.querySelectorAll(
@@ -574,6 +748,8 @@ window.onclick = function(event) {
 // =====================================
 
 window.onload = () => {
+    switchAuthMode("login");
+    renderAuthState();
 
     // RESET UI
 
@@ -633,7 +809,7 @@ window.onload = () => {
         "Monitoring ready"
     );
 
-    if (currentVideoId) {
+    if (authToken && currentUser && currentVideoId) {
 
         startRealtime();
     }
@@ -818,7 +994,7 @@ async function saveZones() {
         // =========================
 
         const saveResponse =
-            await fetch(
+            await apiFetch(
                 "/api/zones",
                 {
                     method: "POST",
@@ -862,7 +1038,7 @@ async function saveZones() {
         );
 
         const reprocessResponse =
-            await fetch(
+            await apiFetch(
                 "/api/reprocess",
                 {
                     method: "POST"

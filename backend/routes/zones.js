@@ -10,6 +10,10 @@ const {
 const {
     getLatestVideo
 } = require("../services/videoService");
+const {
+    authenticate,
+    requireAdmin
+} = require("../middleware/auth");
 
 const router = express.Router();
 
@@ -18,7 +22,7 @@ async function getActiveVideoId() {
     return getCurrentVideoId() || latestVideo?.id || null;
 }
 
-router.post("/zones", async (req, res) => {
+router.post("/zones", authenticate, requireAdmin, async (req, res) => {
 
     try {
 
@@ -49,7 +53,7 @@ router.post("/zones", async (req, res) => {
     }
 });
 
-router.get("/zones", async (req, res) => {
+router.get("/zones", authenticate, async (req, res) => {
 
     try {
 
